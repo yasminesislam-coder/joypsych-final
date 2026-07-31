@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Review before adding</h1>
+
+<div class="summary">
+  <span class="pill add">{{ new|length }} new</span>
+  <span class="pill skip">{{ existing|length }} already in system</span>
+  <span class="pill bad">{{ invalid|length }} invalid</span>
+</div>
+
+<form method="post" action="{{ url_for('confirm') }}">
+  <input type="hidden" name="token" value="{{ token }}">
+  <button type="submit" {{ 'disabled' if new|length == 0 else '' }}>
+    Add {{ new|length }} new contacts
+  </button>
+  <a href="{{ url_for('upload_form') }}" class="cancel">Cancel</a>
+</form>
+
+<h2>New (will be added)</h2>
+{% if new %}
+<table>
+  <tr><th>Name</th><th>Email</th><th>Phone</th></tr>
+  {% for r in new %}<tr><td>{{ r.name }}</td><td>{{ r.email }}</td><td>{{ r.phone }}</td></tr>{% endfor %}
+</table>
+{% else %}<p class="muted">None.</p>{% endif %}
+
+<h2>Already in system (will be skipped)</h2>
+<p class="muted small">Skipped on purpose. This keeps their unsubscribe and cooldown state safe.</p>
+{% if existing %}
+<table>
+  <tr><th>Name</th><th>Email</th><th>Current status</th></tr>
+  {% for r in existing %}<tr><td>{{ r.name }}</td><td>{{ r.email }}</td><td>{{ r.status }}</td></tr>{% endfor %}
+</table>
+{% else %}<p class="muted">None.</p>{% endif %}
+
+<h2>Invalid (will be skipped)</h2>
+{% if invalid %}
+<table>
+  <tr><th>Name</th><th>Email</th><th>Reason</th></tr>
+  {% for r in invalid %}<tr><td>{{ r.name }}</td><td>{{ r.email }}</td><td>{{ r.reason }}</td></tr>{% endfor %}
+</table>
+{% else %}<p class="muted">None.</p>{% endif %}
+{% endblock %}

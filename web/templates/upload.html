@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Upload contacts</h1>
+<p class="muted">CSV with a header row and columns <code>name, email, phone</code>
+   (phone optional). Nothing is added until you review the next screen.</p>
+
+<form method="post" action="{{ url_for('upload_preview') }}" enctype="multipart/form-data" class="card">
+  <input type="file" name="file" accept=".csv,text/csv" required>
+  <button type="submit">Preview</button>
+</form>
+
+<p class="muted small">Contacts already in the system are always skipped, so an
+   unsubscribe or a cooldown is never disturbed by a re-upload.</p>
+{% endblock %}

@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS contacts (
     times_sent      INTEGER DEFAULT 0,
     status          TEXT DEFAULT 'dormant',   -- dormant/contacted/replied/returned
     replied_at      TEXT,
-    unsubscribed_at TEXT
+    unsubscribed_at TEXT,
+    returned_at     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS templates (
@@ -67,7 +68,15 @@ CREATE TABLE IF NOT EXISTS messages (
 
 def init(con):
     con.executescript(SCHEMA)
+    _migrate(con)
     con.commit()
+
+
+def _migrate(con):
+    """Add columns that older databases may not have. Safe to run every start."""
+    cols = {r["name"] for r in con.execute("PRAGMA table_info(contacts)")}
+    if "returned_at" not in cols:
+        con.execute("ALTER TABLE contacts ADD COLUMN returned_at TEXT")
 
 
 # --- contacts ---------------------------------------------------------------
@@ -133,7 +142,11 @@ def mark_replied(con, contact_id):
 
 
 def mark_returned(con, contact_id):
-    con.execute("UPDATE contacts SET status='returned' WHERE id=?", (contact_id,))
+    con.execute(
+        "UPDATE contacts SET status='returned', returned_at=COALESCE(returned_at, ?) "
+        "WHERE id=?",
+        (iso(now()), contact_id),
+    )
     con.commit()
 
 

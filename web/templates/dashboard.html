@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>System health</h1>
+
+<div class="cards">
+  <div class="card stat"><div class="n">{{ d.volume.sends }}</div><div class="l">Sends</div></div>
+  <div class="card stat"><div class="n">{{ d.success.reply_rate }}</div><div class="l">Reply rate</div></div>
+  <div class="card stat"><div class="n">{{ d.success.return_rate }}</div><div class="l">Return rate</div></div>
+  <div class="card stat"><div class="n">{{ d.volume.returns }}</div><div class="l">Returns (won back)</div></div>
+  <div class="card stat warn"><div class="n">{{ d.unsubscribe_rate }}</div><div class="l">Unsubscribe rate</div></div>
+  <div class="card stat"><div class="n">{{ d.gate_health.blocked }}</div><div class="l">Gate blocked</div></div>
+  <div class="card stat"><div class="n">{{ d.pool_health.eligible }}</div><div class="l">Eligible contacts</div></div>
+  <div class="card stat"><div class="n">{{ d.diversity.alive }}</div><div class="l">Live templates</div></div>
+</div>
+
+<div class="charts">
+  <div class="card"><h2>Volume per week</h2><canvas id="volume"></canvas></div>
+  <div class="card"><h2>Rates per week</h2><canvas id="rates"></canvas></div>
+</div>
+
+<div class="card">
+  <h2>Best performing templates</h2>
+  {% if d.top_templates %}
+  <table>
+    <tr><th>Origin</th><th>Score</th><th>Sends</th><th>Replies</th><th>Returns</th><th>Subject</th></tr>
+    {% for t in d.top_templates %}
+    <tr><td>{{ t.origin }}</td><td>{{ t.score }}</td><td>{{ t.sends }}</td>
+        <td>{{ t.replies }}</td><td>{{ t.returns }}</td><td>{{ t.subject }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted">No templates have been sent yet.</p>{% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script>
+  const trends = {{ trends_json|safe }};
+  const weeks = trends.map(t => t.week);
+  const noData = trends.length === 0;
+
+  if (noData) {
+    document.querySelectorAll('.charts .card').forEach(c => {
+      c.querySelector('canvas').replaceWith(
+        Object.assign(document.createElement('p'),
+          {className: 'muted', textContent: 'No activity yet. Charts fill in as the machine runs.'}));
+    });
+  } else {
+    new Chart(document.getElementById('volume'), {
+      type: 'bar',
+      data: { labels: weeks, datasets: [
+        { label: 'Sends',   data: trends.map(t => t.sends) },
+        { label: 'Replies', data: trends.map(t => t.replies) },
+        { label: 'Returns', data: trends.map(t => t.returns) },
+      ]},
+      options: { responsive: true, scales: { y: { beginAtZero: true } } }
+    });
+    new Chart(document.getElementById('rates'), {
+      type: 'line',
+      data: { labels: weeks, datasets: [
+        { label: 'Reply rate',       data: trends.map(t => t.reply_rate), tension: .3 },
+        { label: 'Unsubscribe rate', data: trends.map(t => t.unsub_rate), tension: .3 },
+      ]},
+      options: { responsive: true, scales: { y: { beginAtZero: true } } }
+    });
+  }
+</script>
+{% endblock %}

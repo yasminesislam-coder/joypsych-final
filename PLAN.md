@@ -252,6 +252,33 @@ We can swap any provider later. The brain does not change.
 
 Replies come by polling, not webhooks. Each round, `fetch_replies()` asks the provider for new replies.
 
+## 9b. The website (v1)
+
+A thin face over the machine. Two tabs. Flask, server-rendered, shares the same
+`outbound.db`. The website never sends: sending stays on the scheduler.
+
+**Tab 1 - Upload contacts.** Upload a CSV, then preview, then confirm.
+- The preview sorts every row into three groups: **new** (will add), **already in
+  system** (skip, shown with their status), and **invalid** (skip).
+- Confirm adds only the new rows. Existing contacts are never touched, so a
+  `never` or a resting contact keeps their state. This protects unsubscribe and
+  cooldown. It falls out of the unique-email insert-or-ignore, and the preview
+  makes it visible.
+
+**Tab 2 - Dashboard.** Read only.
+- Numbers: the cards from `dashboard.build`.
+- Trends over time: reply rate and unsubscribe rate per week, volume per week,
+  built from the timestamps (`sent_at`, `reply_at`, `unsubscribed_at`, `returned_at`).
+- Best performing templates: the top table.
+
+**One schema add:** `contacts.returned_at`, so returns can be charted over time.
+
+**Security:** localhost only for v1. TODO before hosting: add authentication and
+put it behind HTTPS. It holds PII (names, emails, phones) and business metrics.
+
+**Files (new):** `web/app.py`, `web/templates/*.html`, `web/static/style.css`.
+Everything else is reused.
+
 ## 9. Next steps
 
 1. Write the test list. Prove correct behavior for each situation.

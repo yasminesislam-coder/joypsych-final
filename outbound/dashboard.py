@@ -58,6 +58,49 @@ def build(con):
     }
 
 
+def _week(ts):
+    """ISO year-week label like 2026-W31 from an ISO timestamp string."""
+    from datetime import datetime
+    y, w, _ = datetime.fromisoformat(ts).isocalendar()
+    return f"{y}-W{w:02d}"
+
+
+def trends(con):
+    """Weekly time series for the charts. One row per week that has activity."""
+    weeks = {}
+
+    def bucket(ts, field):
+        if not ts:
+            return
+        wk = weeks.setdefault(_week(ts), {"sends": 0, "replies": 0,
+                                          "unsubscribes": 0, "returns": 0})
+        wk[field] += 1
+
+    for r in con.execute("SELECT sent_at FROM messages"):
+        bucket(r["sent_at"], "sends")
+    for r in con.execute("SELECT reply_at FROM messages WHERE reply_at IS NOT NULL"):
+        bucket(r["reply_at"], "replies")
+    for r in con.execute("SELECT unsubscribed_at FROM contacts WHERE unsubscribed_at IS NOT NULL"):
+        bucket(r["unsubscribed_at"], "unsubscribes")
+    for r in con.execute("SELECT returned_at FROM contacts WHERE returned_at IS NOT NULL"):
+        bucket(r["returned_at"], "returns")
+
+    out = []
+    for label in sorted(weeks):
+        w = weeks[label]
+        sends = w["sends"]
+        out.append({
+            "week": label,
+            "sends": sends,
+            "replies": w["replies"],
+            "returns": w["returns"],
+            "unsubscribes": w["unsubscribes"],
+            "reply_rate": round(w["replies"] / sends, 4) if sends else 0.0,
+            "unsub_rate": round(w["unsubscribes"] / sends, 4) if sends else 0.0,
+        })
+    return out
+
+
 def render(con):
     d = build(con)
     lines = ["=== Outbound machine dashboard ===", ""]

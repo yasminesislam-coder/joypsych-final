@@ -224,6 +224,30 @@ rm KILL        # resume
   list. Each round we poll it and set `never`. A stop-word reply is the instant
   safety net. No server of our own.
 
+## The website (v1)
+
+A two-tab Flask app over the same database. **Upload** loads a CSV (preview, then
+confirm; existing contacts are always skipped, so unsubscribe and cooldown state
+is never disturbed). **Dashboard** shows the health numbers, trend charts over
+time, and the best performing templates. The website never sends; sending stays
+on the scheduler.
+
+> **SECURITY TODO (must do before hosting):** v1 is **localhost only** and has **no
+> authentication**. It holds PII (names, emails, phones) and business metrics. Do
+> not expose it to a network as-is. Before hosting, add auth (login or SSO) and
+> serve it over HTTPS.
+
+Run the website:
+
+```bash
+python3 -m pip install flask     # once
+python3 web/app.py               # serves http://127.0.0.1:5001
+```
+
+Then open `http://127.0.0.1:5001`. Port 5001 avoids the macOS AirPlay Receiver,
+which occupies port 5000; override with `OUTBOUND_WEB_PORT` if you like. The site
+reads and writes the same `outbound.db` the scheduler uses.
+
 ## What is mocked (out of scope for v1)
 
 - **The sales pipeline.** `sales.notify()` records the handoff in memory. Swap in a real CRM.

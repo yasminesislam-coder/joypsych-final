@@ -3,3 +3,4 @@
 anthropic>=0.40      # real LLM hand (llm.RealLLM); fake is used without it
 requests>=2.31       # real email hand (channels.PostmarkEmail); fake is used without it
 pytest>=8.0          # test suite
+flask>=3.0           # the website (web/app.py)
