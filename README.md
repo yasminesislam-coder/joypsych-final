@@ -10,11 +10,18 @@ itself** which emails work using a genetic algorithm. Hot replies go straight to
 sales. Unsubscribes are honored forever. A human spends about an hour a month
 reading a dashboard, not babysitting.
 
-- **Runs itself.** One command per round. A kill switch and volume caps keep it safe.
+- **Runs itself.** A scheduler (cron) runs one cycle command on a timer; each cycle sweeps replies and sends the next batch. A kill switch and volume caps keep it safe.
 - **Improves itself.** Winning templates breed new templates. No human rewrites anything.
 - **Protects the brand.** A two-layer gate refuses anything that smells like AI, spam, or profanity, and every send is judged before it ships.
 - **Proves impact.** Every return traces back to the exact template that earned it.
-- **Ships today.** Real logic behind swappable seams. Runs fully offline with fakes now; set two API keys to go live on Postmark + Claude.
+- **Ships today.** Real logic behind swappable seams. Runs fully offline with fakes now; set `POSTMARK_TOKEN` + `ANTHROPIC_API_KEY` to send for real on Postmark + Claude.
+
+**How email is actually sent:** there is no always-on server doing it. A scheduler
+(cron) runs `python3 main.py cycle 1` on a timer. Each run sweeps inbound, then sends
+the next batch through the email seam. With no `POSTMARK_TOKEN` set, that seam is a
+fake that records and sends nothing; with it set, it posts each email to Postmark.
+The website never sends: it only uploads contacts and shows the dashboard. See
+[How sending works](#how-sending-works) for the full flow.
 
 ```bash
 python3 main.py demo        # seeds fake data, runs 3 cycles offline, prints the dashboard
@@ -210,6 +217,48 @@ it to resume.
 touch KILL     # stop
 rm KILL        # resume
 ```
+
+## How sending works
+
+There is no long-running send daemon. Email goes out only when a **cycle** runs, and
+a **scheduler** is what runs cycles on a timer. The full chain:
+
+```
+cron (timer)
+  └─ python3 main.py cycle 1
+       └─ engine.run_cycle
+            ├─ sweep    : read unsubscribes, bounces, replies, returns; update rows
+            ├─ send_batch: for each eligible contact -> channel.send(...)
+            │               (skips never/resting; obeys daily cap, bounce breaker, KILL file)
+            └─ evolve   : score templates, breed, drop (the genetic algorithm)
+```
+
+- **The channel is a seam** ([channels.py](outbound/channels.py)). With **no `POSTMARK_TOKEN`**,
+  it is `FakeEmail` — it records the message and sends nothing. With `POSTMARK_TOKEN`
+  set, it is `PostmarkEmail`, which posts each email to the Postmark API. Today, in
+  the demo, it is the fake: **no real email is sent.**
+- **The website never sends.** Flask only uploads contacts and renders the dashboard.
+  Sending lives entirely in the scheduled cycle, so no click can trigger an email.
+- **Cadence is safe by design.** Each contact rests 30 days after a send, so even a
+  daily cron emails any one person at most once a month.
+
+### Turn it on for real
+
+1. Set the providers so the real channel is used:
+   ```bash
+   export POSTMARK_TOKEN=...        # real Postmark sending + suppression list
+   export OUTBOUND_FROM=hello@jotpsych.com
+   export OUTBOUND_ADDRESS="JotPsych, <real physical address>"   # CAN-SPAM
+   export ANTHROPIC_API_KEY=...     # real template writing/judging (optional; fake otherwise)
+   ```
+2. Install the scheduler. Example crontab entry (daily at 9am), which is the entire
+   operation:
+   ```bash
+   # crontab -e
+   0 9 * * *  cd /path/to/project && . ./.env && python3 main.py cycle 1 >> run.log 2>&1
+   ```
+
+Until both are done, the machine runs cycles but sends nothing real.
 
 ## Safety and compliance
 

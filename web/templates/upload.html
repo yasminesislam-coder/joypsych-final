@@ -5,7 +5,8 @@
    (phone optional). Nothing is added until you review the next screen.</p>
 
 <form method="post" action="{{ url_for('upload_preview') }}" enctype="multipart/form-data" class="card">
-  <input type="file" name="file" accept=".csv,text/csv" required>
+  <input type="file" name="file"
+         accept=".csv,text/csv,text/plain,application/vnd.ms-excel,application/csv" required>
   <button type="submit">Preview</button>
 </form>
 
