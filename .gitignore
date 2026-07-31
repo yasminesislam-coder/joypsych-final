@@ -1,0 +1,18 @@
+# secrets
+.env
+
+# runtime data and logs
+*.db
+run.log
+KILL
+
+# python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# os
+.DS_Store
