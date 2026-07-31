@@ -2,321 +2,135 @@
 
 ## TL;DR
 
-A self-running email machine that wins back clinicians who tried JotPsych and left.
+This machine wins back clinicians who tried JotPsych and left.
 
-You feed it a list of names and emails. It writes outreach, checks every message
-against a strict brand gate, sends it, watches what comes back, and **teaches
-itself** which emails work using a genetic algorithm. Hot replies go straight to
-sales. Unsubscribes are honored forever. A human spends about an hour a month
-reading a dashboard, not babysitting.
+You give it a list of names and emails. It writes outreach, checks each email against
+a strict brand gate, sends it, and reads what comes back. It teaches itself which
+emails work. Good replies go to sales. Unsubscribes are honored forever. A human
+watches a dashboard about one hour a month.
 
-- **Runs itself.** A scheduler (cron) runs one cycle command on a timer; each cycle sweeps replies and sends the next batch. A kill switch and volume caps keep it safe.
-- **Improves itself.** Winning templates breed new templates. No human rewrites anything.
-- **Protects the brand.** A two-layer gate refuses anything that smells like AI, spam, or profanity, and every send is judged before it ships.
-- **Proves impact.** Every return traces back to the exact template that earned it.
-- **Ships today.** Real logic behind swappable seams. Runs fully offline with fakes now; set `POSTMARK_TOKEN` + `ANTHROPIC_API_KEY` to send for real on Postmark + Claude.
-
-**How email is actually sent:** there is no always-on server doing it. A scheduler
-(cron) runs `python3 main.py cycle 1` on a timer. Each run sweeps inbound, then sends
-the next batch through the email seam. With no `POSTMARK_TOKEN` set, that seam is a
-fake that records and sends nothing; with it set, it posts each email to Postmark.
-The website never sends: it only uploads contacts and shows the dashboard. See
-[How sending works](#how-sending-works) for the full flow.
+A scheduler (cron) runs one command on a timer. That command sends the next batch.
+The machine sends nothing real until you set `POSTMARK_TOKEN`. The website never
+sends. It only uploads contacts and shows the dashboard.
 
 ```bash
-python3 main.py demo        # seeds fake data, runs 3 cycles offline, prints the dashboard
-pytest -q                   # 41 tests, all offline
+python3 main.py demo        # run offline with fake data, then print the dashboard
+python3 -m pytest -q        # run the tests
 ```
 
----
+## What it does
 
-## The problem
+- **Runs itself.** Cron runs one cycle on a timer. A kill switch and caps keep it safe.
+- **Improves itself.** Winning templates breed new templates. No person rewrites code.
+- **Protects the brand.** A two-layer gate refuses AI-sounding, spammy, or off-brand email.
+- **Proves impact.** Every return traces back to the template that earned it.
+- **Ships today.** Real logic sits behind swappable seams. Set two keys to go live.
 
-Thousands of clinicians tried JotPsych and did not convert. The timing was wrong:
-a competitor was already in place, the practice was not in enough pain yet, or a
-contract had a year left. They did not say "no forever." They said "not now."
+For the full design, see [PLAN.md](PLAN.md). For the behavior spec, see [TESTS.md](TESTS.md).
 
-This machine taps them on the shoulder again, politely, on a slow rhythm, and
-gets better at it every cycle.
+## Run it offline
 
-## The five requirements, and how they are met
-
-| Requirement | How |
-|---|---|
-| 1. Real, deployable tomorrow | Real logic behind seams (`channels.py`, `llm.py`). Fakes by default, Postmark + Claude when keys are set. |
-| 2. Tells the human what to do | A read-only dashboard (`dashboard.py`): top templates, rates over time, gate and pool health. |
-| 3. Trusted quality gate | Two layers (`gate.py`): pure-Python banned words, then an LLM brand judge. Judged once at birth, fail-closed. |
-| 4. Metrics, learning, receipts | The genetic algorithm (`learn.py`) plus full attribution: a return joins back to one template. |
-| 5. Taste, refuses off-brand | The gate refuses AI cliches, spam, overclaims, profanity, and the em dash before anything ships. |
-
-## How it works: the loop
-
-One round (`engine.run_round`):
-
-1. **Sweep inbound first.** Read unsubscribes, bounces, replies, and the returns feed.
-2. **Route them.** A stop word or bounce sets `never`. An interested reply goes to sales now. A return is recorded and credited.
-3. **Send.** Pick eligible contacts, pick a template by score, fill the name, append the CAN-SPAM footer, send, and write the receipt.
-
-A **cycle** (`engine.run_cycle`) is a round plus one turn of the genetic algorithm.
-
-## The rules (never broken)
-
-- Read the contact row first. Obey its stamp before acting.
-- **Stamps:** `none` (free), `rest` (wait until `rest_until`), `never` (blocked forever).
-- `never` is checked first, always. When in doubt, do not send.
-- **Once a month.** After a send, the contact rests 30 days.
-- **No cap on tries.** The machine keeps emailing, monthly, until the person unsubscribes.
-- **Fail closed.** If the judge errors, the gate refuses.
-
-## The genetic algorithm
-
-Each template is one animal in a herd. Its fitness is one score built from both numbers:
-
-```
-score = smoothed(reply_rate) + RETURN_WEIGHT * smoothed(return_rate)
-```
-
-Every cycle: **start uniform**, then **favor winners** with more sends, **breed**
-new templates by crossover and mutation off the winners, **always inject one true
-random** template made from scratch, and **drop losers**. Two safety valves stop
-it selecting on noise: rates are smoothed (Laplace), and no template is dropped
-before `MIN_SENDS_TO_DROP`. The pool never fully dies.
-
-The model writes templates. It does **not** write each send. Each send is a
-template with the `{name}` slot filled, in pure Python.
-
-## The gate
-
-- **Layer 1, hard rules.** Pure Python, no model. Banned words (whole-word,
-  case-insensitive so real surnames are safe), banned signs (em dash, `!!!`,
-  `#1`), and a length limit. Fast, deterministic, always runs.
-- **Layer 2, the judge.** An LLM asks the soft question: does this sound like
-  JotPsych, not a robot? Run **once when a template is born** and cached. Send
-  time never calls a model.
-
-## Architecture: real logic, swappable seams
-
-The brain never talks to the outside world directly. It talks through seams. Swap
-a fake for a real provider and the brain does not change.
-
-```
-outbound/
-  config.py     all the knobs and word lists
-  db.py         SQLite, three tables, all reads/writes
-  llm.py        model seam        FakeLLM  | RealLLM (Claude)
-  channels.py   email seam        FakeEmail | PostmarkEmail
-  sales.py      handoff seam      FakeSales (mock CRM)
-  returns.py    returns feed seam FakeReturns (mock product data)
-  gate.py       the two-layer quality gate
-  writer.py     fill {name} + footer; generate templates
-  learn.py      the genetic algorithm
-  engine.py     the loop (sweep, route, send)
-  dashboard.py  the read-only health report
-main.py         CLI
-tests/          41 offline tests
-PLAN.md         the design, in Simplified Technical English
-TESTS.md        the behavior spec, 60 cases
-```
-
-## Data model (three tables)
-
-- **contacts** - one row per person. name, email, phone, stamp, rest_until, times_sent, status, replied_at, unsubscribed_at.
-- **templates** - one row per email template. subject, body (with `{name}`), origin, sends, replies, returns, alive, gate_reason.
-- **messages** - one row per real send (the receipt). contact_id, template_id, subject, body, sent_at, reply_at, reply_text.
-
-Attribution is one join: a returned contact -> their last message -> the template that earned it.
-
-## Running it
-
-### 1. Prerequisites
-
-- Python 3.9 or newer. Check with `python3 --version`.
-- Nothing else for the offline demo: the core uses only the standard library.
-
-### 2. Get the code and (optionally) install extras
-
-From the project root (the folder holding `main.py`):
+The core needs only Python 3.9 or newer. Nothing else.
 
 ```bash
-# The demo and the machine's core need NO third-party packages.
-# Install these only to run the tests or to go live with real providers:
-python3 -m pip install -r requirements.txt
+python3 main.py demo         # seed fake data, run cycles, print the dashboard
+python3 main.py preview      # print one finished email
+python3 main.py sim          # print a dashboard full of simulated data
+python3 -m pytest -q         # run the test suite
 ```
 
-### 3. Try it offline (no API keys, sends nothing real)
+## Run it against your list
+
+Give it a CSV with a header row and columns `name,email,phone` (phone optional).
 
 ```bash
-python3 main.py sim                  # simulated world: prints a fully populated dashboard
-python3 main.py demo                 # seed fake data, run 3 cycles, print the dashboard
-python3 main.py preview              # generate one template and print the finished email
-python3 main.py check-llm            # make one model call, report pass/fail and the gate verdict
-python3 -m pytest -q                 # run the offline test suite
-```
-
-To just *see* the dashboard with real numbers, run `python3 main.py sim`. It uses a
-throwaway in-memory database and does not touch your real data.
-
-`preview` and `check-llm` use the fake LLM until you set `ANTHROPIC_API_KEY`, then
-they exercise real Claude. `check-llm` is the quickest way to confirm your key works.
-
-### 4. Run against your own contact list
-
-Prepare a CSV with a header row and columns `name,email,phone` (phone optional).
-Then, from the project root:
-
-```bash
-python3 main.py init                     # create the SQLite database (outbound.db)
+python3 main.py init                     # create the database (demo.db)
 python3 main.py seed-contacts leads.csv  # load your contacts
-python3 main.py seed-templates           # fill the starter template pool
-python3 main.py cycle 1                  # run one cycle: sweep + send + evolve
-python3 main.py dashboard                # read the health report
+python3 main.py seed-templates           # add the starter templates
+python3 main.py cycle 1                  # sweep replies, send a batch, then learn
+python3 main.py dashboard                # print the health report
 ```
 
-`main.py` with no arguments prints the full command list.
+## The website
 
-### 5. Go live with real providers
-
-Set environment variables. Any provider left blank falls back to its fake, so you
-can switch on one piece at a time. Without `POSTMARK_TOKEN` and `ANTHROPIC_API_KEY`
-the machine stays fully in fake mode and sends nothing real.
+A small Flask app with two tabs. It shares the same database.
 
 ```bash
-export POSTMARK_TOKEN=...        # switches email to real Postmark
+python3 -m pip install flask
+python3 main.py seed-demo        # optional: fill the dashboard with mock data
+python3 web/app.py               # open http://127.0.0.1:5001
+```
+
+- **Upload.** Load a CSV, then review, then confirm. The review shows new contacts,
+  contacts already in the system, and invalid rows. Existing contacts are always
+  skipped, so their unsubscribe and cooldown state stays safe.
+- **Dashboard.** It shows the health numbers, weekly trend charts, and the best
+  templates in full. It is read only. It never sends.
+
+> **Security TODO before hosting.** The website is localhost only and has no login.
+> It holds names, emails, and phones. Do not put it on a network as is. Add a login
+> and HTTPS first.
+
+## How email is sent
+
+There is no always-on sender. Email goes out only when a cycle runs. Cron runs cycles.
+
+```
+cron  ->  python3 main.py cycle 1  ->  sweep inbound  ->  send batch  ->  learn
+```
+
+- **The email channel is a seam.** With no `POSTMARK_TOKEN`, it is a fake. It records
+  the email and sends nothing. With the token set, it posts each email to Postmark.
+- **Each contact rests 30 days after a send.** So a daily cron emails one person at
+  most once a month.
+- **The website never sends.** No click can trigger an email.
+
+## Go live
+
+Set the providers, then install the scheduler.
+
+```bash
+export POSTMARK_TOKEN=...        # real email send and suppression list
 export OUTBOUND_FROM=hello@jotpsych.com
-export ANTHROPIC_API_KEY=...     # switches the writer/judge to real Claude
 export OUTBOUND_ADDRESS="JotPsych, <real physical address>"   # required by CAN-SPAM
-# optional: export OUTBOUND_DB=/path/to/outbound.db   to choose where data lives
+export ANTHROPIC_API_KEY=...     # real writing and judging (fake without it)
 ```
 
-Then run one cycle whenever you want the machine to act. One command per cycle is
-the whole operation:
-
 ```bash
-python3 main.py cycle 1
-```
-
-### 6. Run it on a schedule (the "runs itself" part)
-
-Point cron (or any job runner) at the cycle command. Daily at 9am, from the project
-root, with keys loaded from a file:
-
-```bash
-# crontab -e
+# crontab -e  (run one cycle each morning)
 0 9 * * *  cd /path/to/project && . ./.env && python3 main.py cycle 1 >> run.log 2>&1
 ```
 
-The 30-day rest per contact means a daily schedule still emails any one person at
-most once a month.
+## Safety
 
-### Stopping it
+- **Kill switch.** Create a file named `KILL` in the project root to stop sending.
+  Delete it to resume.
+- **Caps.** `SENDS_PER_ROUND` and `DAILY_SEND_CAP` limit how much goes out.
+- **Bounce breaker.** Too many dead addresses in one sweep halts the round.
+- **CAN-SPAM.** Every email carries an unsubscribe link, a `List-Unsubscribe` header,
+  and a physical address.
+- **Unsubscribe.** Postmark hosts the unsubscribe page and suppression list. Each
+  round we read that list and set the contact to `never`. A stop-word reply also
+  sets `never` at once.
 
-Create a file named `KILL` in the project root to halt sending immediately. Delete
-it to resume.
+## What is mocked
 
-```bash
-touch KILL     # stop
-rm KILL        # resume
-```
+- **Sales handoff.** `sales.notify()` records the lead. Swap in a real CRM later.
+- **Returns feed.** `returns.check()` returns a set list. Swap in real product data.
+- **SMS.** Out for v1. Cold texting without consent is a legal problem (TCPA).
 
-## How sending works
+## Config
 
-There is no long-running send daemon. Email goes out only when a **cycle** runs, and
-a **scheduler** is what runs cycles on a timer. The full chain:
-
-```
-cron (timer)
-  └─ python3 main.py cycle 1
-       └─ engine.run_cycle
-            ├─ sweep    : read unsubscribes, bounces, replies, returns; update rows
-            ├─ send_batch: for each eligible contact -> channel.send(...)
-            │               (skips never/resting; obeys daily cap, bounce breaker, KILL file)
-            └─ evolve   : score templates, breed, drop (the genetic algorithm)
-```
-
-- **The channel is a seam** ([channels.py](outbound/channels.py)). With **no `POSTMARK_TOKEN`**,
-  it is `FakeEmail` — it records the message and sends nothing. With `POSTMARK_TOKEN`
-  set, it is `PostmarkEmail`, which posts each email to the Postmark API. Today, in
-  the demo, it is the fake: **no real email is sent.**
-- **The website never sends.** Flask only uploads contacts and renders the dashboard.
-  Sending lives entirely in the scheduled cycle, so no click can trigger an email.
-- **Cadence is safe by design.** Each contact rests 30 days after a send, so even a
-  daily cron emails any one person at most once a month.
-
-### Turn it on for real
-
-1. Set the providers so the real channel is used:
-   ```bash
-   export POSTMARK_TOKEN=...        # real Postmark sending + suppression list
-   export OUTBOUND_FROM=hello@jotpsych.com
-   export OUTBOUND_ADDRESS="JotPsych, <real physical address>"   # CAN-SPAM
-   export ANTHROPIC_API_KEY=...     # real template writing/judging (optional; fake otherwise)
-   ```
-2. Install the scheduler. Example crontab entry (daily at 9am), which is the entire
-   operation:
-   ```bash
-   # crontab -e
-   0 9 * * *  cd /path/to/project && . ./.env && python3 main.py cycle 1 >> run.log 2>&1
-   ```
-
-Until both are done, the machine runs cycles but sends nothing real.
-
-## Safety and compliance
-
-- **Kill switch.** Create a file named `KILL` in the working directory to halt the
-  machine instantly. Delete it to resume. This is the human's stop button.
-- **Volume caps.** `SENDS_PER_ROUND` and `DAILY_SEND_CAP` bound how much goes out.
-- **Bounce breaker.** If one sweep sees more than `BOUNCE_BREAK` dead addresses,
-  sending halts for that round.
-- **CAN-SPAM.** Every email carries a `List-Unsubscribe` header, a Postmark-hosted
-  unsubscribe link, and a physical mailing address.
-- **Unsubscribe (Option B).** Postmark hosts the unsubscribe page and suppression
-  list. Each round we poll it and set `never`. A stop-word reply is the instant
-  safety net. No server of our own.
-
-## The website (v1)
-
-A two-tab Flask app over the same database. **Upload** loads a CSV (preview, then
-confirm; existing contacts are always skipped, so unsubscribe and cooldown state
-is never disturbed). **Dashboard** shows the health numbers, trend charts over
-time, and the best performing templates. The website never sends; sending stays
-on the scheduler.
-
-> **SECURITY TODO (must do before hosting):** v1 is **localhost only** and has **no
-> authentication**. It holds PII (names, emails, phones) and business metrics. Do
-> not expose it to a network as-is. Before hosting, add auth (login or SSO) and
-> serve it over HTTPS.
-
-Run the website:
-
-```bash
-python3 -m pip install flask     # once
-python3 main.py seed-demo        # optional: fill the dashboard with mock multi-week data
-python3 web/app.py               # serves http://127.0.0.1:5001
-```
-
-The default database is `demo.db`. `seed-demo` resets it and fills it with simulated
-data so the dashboard is not empty; skip it to start clean. Set `OUTBOUND_DB` to use
-a different file.
-
-Then open `http://127.0.0.1:5001`. Port 5001 avoids the macOS AirPlay Receiver,
-which occupies port 5000; override with `OUTBOUND_WEB_PORT` if you like. The site
-reads and writes the same `outbound.db` the scheduler uses.
-
-## What is mocked (out of scope for v1)
-
-- **The sales pipeline.** `sales.notify()` records the handoff in memory. Swap in a real CRM.
-- **The returns feed.** `returns.check()` returns a set list. Swap in real product data (match by email).
-- **SMS.** Dropped for v1. Cold texting non-consented contacts is a TCPA problem, not a STOP-handling problem. The seam keeps it easy to add once consent exists.
-
-## Tuning
-
-Everything lives in `outbound/config.py`: the 30-day rest, `RETURN_WEIGHT`, the
-banned-word lists, the caps, and the mailing address. Change these, not the logic.
+All the knobs live in [outbound/config.py](outbound/config.py): the 30-day rest,
+`RETURN_WEIGHT`, the banned-word lists, the caps, and the mailing address. Change
+these, not the logic.
 
 ## Tests
 
-`pytest -q` runs 41 tests fully offline: stamps, the once-a-month rule, every gate
-rule (including the Scunthorpe word-boundary fix), unsubscribe and bounce
-handling, the sales handoff, the returns feed, the genetic algorithm, the kill
-switch, the bounce breaker, and the CAN-SPAM footer. `TESTS.md` is the plain-language
-spec behind them.
+```bash
+python3 -m pytest -q
+```
+
+The tests run fully offline. They cover the stamps, the once-a-month rule, the gate,
+unsubscribe and bounce handling, the sales handoff, the returns feed, the genetic
+algorithm, the dashboard, the kill switch, and the CAN-SPAM footer.
