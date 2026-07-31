@@ -13,10 +13,42 @@ A scheduler (cron) runs one command on a timer. That command sends the next batc
 The machine sends nothing real until you set `POSTMARK_TOKEN`. The website never
 sends. It only uploads contacts and shows the dashboard.
 
+## Run it yourself
+
+You need Python 3.9 or newer. Check it: `python3 --version`.
+
+**1. Get the code.**
+
 ```bash
-python3 main.py demo        # run offline with fake data, then print the dashboard
-python3 -m pytest -q        # run the tests
+git clone https://github.com/yasminesislam-coder/joypsych-final.git
+cd joypsych-final
 ```
+
+**2. See it run offline.** This uses fake data. It sends no real email.
+
+```bash
+python3 main.py demo
+```
+
+**3. Open the website.** This is the two-tab app: a dashboard and an upload page.
+
+```bash
+python3 -m pip install flask
+python3 main.py seed-demo        # fill the dashboard with mock data
+python3 web/app.py               # then open http://127.0.0.1:5001
+```
+
+On the site, the **Dashboard** tab shows the numbers, the charts, and the best emails.
+The **Upload** tab loads a CSV. Try `demo/leads_batch1.csv`, then `demo/leads_batch2.csv`.
+
+**4. Run the tests.**
+
+```bash
+python3 -m pytest -q
+```
+
+Other commands: `python3 main.py preview` prints one email. `python3 main.py sim`
+prints a full dashboard. Run `python3 main.py` with no argument to list every command.
 
 ## What it does
 
@@ -27,17 +59,6 @@ python3 -m pytest -q        # run the tests
 - **Ships today.** Real logic sits behind swappable seams. Set two keys to go live.
 
 For the full design, see [PLAN.md](PLAN.md). For the behavior spec, see [TESTS.md](TESTS.md).
-
-## Run it offline
-
-The core needs only Python 3.9 or newer. Nothing else.
-
-```bash
-python3 main.py demo         # seed fake data, run cycles, print the dashboard
-python3 main.py preview      # print one finished email
-python3 main.py sim          # print a dashboard full of simulated data
-python3 -m pytest -q         # run the test suite
-```
 
 ## Run it against your list
 
@@ -53,13 +74,8 @@ python3 main.py dashboard                # print the health report
 
 ## The website
 
-A small Flask app with two tabs. It shares the same database.
-
-```bash
-python3 -m pip install flask
-python3 main.py seed-demo        # optional: fill the dashboard with mock data
-python3 web/app.py               # open http://127.0.0.1:5001
-```
+A small Flask app with two tabs. It shares the same database. Step 3 above shows how
+to run it.
 
 - **Upload.** Load a CSV, then review, then confirm. The review shows new contacts,
   contacts already in the system, and invalid rows. Existing contacts are always
