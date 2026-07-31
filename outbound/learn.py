@@ -34,11 +34,10 @@ def birth(con, llm, subject, body, origin):
     return db.add_template(con, subject, body, origin, alive=ok, gate_reason=reason)
 
 
-def seed(con, llm, n=4):
-    """Fill an empty pool with starter templates."""
-    for _ in range(n):
-        subject, body, origin = writer.generate(llm, "seed")
-        birth(con, llm, subject, body, "seed")
+def seed(con, llm, n=None):
+    """Fill an empty pool with the hand-authored, spec-compliant starters."""
+    for t in writer.STARTER_TEMPLATES:
+        birth(con, llm, t["subject"], t["body"], "seed")
 
 
 def evolve(con, llm):

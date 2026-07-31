@@ -241,8 +241,13 @@ Run the website:
 
 ```bash
 python3 -m pip install flask     # once
+python3 main.py seed-demo        # optional: fill the dashboard with mock multi-week data
 python3 web/app.py               # serves http://127.0.0.1:5001
 ```
+
+The default database is `demo.db`. `seed-demo` resets it and fills it with simulated
+data so the dashboard is not empty; skip it to start clean. Set `OUTBOUND_DB` to use
+a different file.
 
 Then open `http://127.0.0.1:5001`. Port 5001 avoids the macOS AirPlay Receiver,
 which occupies port 5000; override with `OUTBOUND_WEB_PORT` if you like. The site

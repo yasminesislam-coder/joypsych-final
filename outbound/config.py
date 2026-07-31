@@ -2,7 +2,7 @@
 import os
 
 # --- storage ---
-DB_PATH = os.environ.get("OUTBOUND_DB", "outbound.db")
+DB_PATH = os.environ.get("OUTBOUND_DB", "demo.db")
 
 # --- the once-a-month rule ---
 REST_DAYS = 30          # after a send, rest this many days before the next

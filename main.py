@@ -10,10 +10,13 @@
     python main.py check-llm            make one model call and report pass/fail
     python main.py preview              generate one template and print the finished email
     python main.py sim                  run a simulated world and print a full dashboard
+    python main.py seed-demo            fill the default DB with mock multi-week data
 """
 import csv
+import os
 import random
 import sys
+from datetime import datetime, timedelta
 
 from outbound import config, db, dashboard, engine, learn, writer, gate
 from outbound.llm import get_llm, FakeLLM
@@ -125,6 +128,56 @@ def cmd_sim():
     print(f"\n(sales received {len(d.sales.handoffs)} hot leads in this simulated run)")
 
 
+def _run_sim_world(con, rounds=5):
+    """Send, then let a fake world reply / return / unsubscribe. Shared by sim and seed-demo."""
+    d = engine.Deps(FakeEmail(), FakeLLM(), FakeSales(), FakeReturns())
+    random.seed(7)
+    old = config.SENDS_PER_ROUND
+    config.SENDS_PER_ROUND = 30
+    for _ in range(rounds):
+        engine.send_batch(con, d, {})
+        fresh = con.execute("SELECT c.email FROM messages m JOIN contacts c "
+                            "ON c.id=m.contact_id WHERE m.reply_at IS NULL").fetchall()
+        inbox, returned, suppressed = [], [], []
+        for r in fresh:
+            roll = random.random()
+            if roll < 0.15:   inbox.append({"email": r["email"], "text": "yes, a demo please"})
+            elif roll < 0.20: suppressed.append(r["email"])
+            if roll < 0.05:   returned.append(r["email"])
+        d.channel.inbox, d.channel.suppressed, d.returns.returned = inbox, suppressed, returned
+        engine.sweep(con, d)
+        learn.evolve(con, d.llm)
+    config.SENDS_PER_ROUND = old
+    return d
+
+
+def _backdate_weeks(con, span=6):
+    """Spread activity timestamps across past weeks so the trend charts have shape."""
+    for table, col in [("messages", "sent_at"), ("messages", "reply_at"),
+                       ("contacts", "unsubscribed_at"), ("contacts", "returned_at")]:
+        for r in con.execute(f"SELECT id, {col} FROM {table} WHERE {col} IS NOT NULL"):
+            newts = datetime.fromisoformat(r[col]) - timedelta(weeks=r["id"] % span)
+            con.execute(f"UPDATE {table} SET {col}=? WHERE id=?",
+                        (newts.isoformat(timespec="seconds"), r["id"]))
+    con.commit()
+
+
+def cmd_seed_demo():
+    """Reset the default database and fill it with simulated multi-week data, so
+    the dashboard is populated. Uses fake providers only. Sends nothing real."""
+    if os.path.exists(config.DB_PATH):
+        os.remove(config.DB_PATH)
+    con = db.connect(); db.init(con)
+    learn.seed(con, FakeLLM(), n=4)
+    learn.birth(con, FakeLLM(), "Hi {name}", "we leverage synergy to supercharge", "random")
+    for i in range(300):
+        db.add_contact(con, f"Dr Person{i}", f"person{i}@example.com")
+    _run_sim_world(con)
+    _backdate_weeks(con)
+    print(f"seeded {config.DB_PATH} with mock multi-week data. "
+          "Start the site with: python3 web/app.py")
+
+
 def cmd_demo():
     """Everything offline with fakes: seed people, seed templates, run cycles."""
     con = db.connect(); db.init(con)
@@ -151,6 +204,7 @@ def main(argv):
     elif cmd == "check-llm": cmd_check_llm()
     elif cmd == "preview": cmd_preview()
     elif cmd == "sim": cmd_sim()
+    elif cmd == "seed-demo": cmd_seed_demo()
     else: print(__doc__)
 
 

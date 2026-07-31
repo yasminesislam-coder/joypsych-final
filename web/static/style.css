@@ -56,6 +56,15 @@ button:disabled { background: #b8c2d0; cursor: not-allowed; }
 .flash { background: #eaf6ee; border: 1px solid #c7e6d3; color: #1f6b3f;
          padding: 12px 14px; border-radius: 10px; margin-bottom: 18px; }
 
+.tmpl { border-top: 1px solid var(--line); padding: 14px 0; }
+.tmpl:first-of-type { border-top: 0; }
+.tmpl-head { display: flex; justify-content: space-between; gap: 12px;
+             flex-wrap: wrap; margin-bottom: 8px; }
+.subj { font-weight: 600; }
+.meta { color: var(--muted); font-size: 12px; }
+.body { white-space: pre-wrap; font: inherit; background: #f7f9fc;
+        border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 0; }
+
 .summary { display: flex; gap: 10px; margin-bottom: 16px; }
 .pill { padding: 6px 12px; border-radius: 999px; font-weight: 600; font-size: 13px; }
 .pill.add { background: #e7f6ee; color: var(--add); }

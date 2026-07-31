@@ -40,7 +40,8 @@ def build(con):
         "top_templates": [
             {"id": t["id"], "origin": t["origin"], "sends": t["sends"],
              "replies": t["replies"], "returns": t["returns"],
-             "score": round(learn.score(t), 3), "subject": t["subject"]}
+             "score": round(learn.score(t), 3), "subject": t["subject"],
+             "body": t["body"]}
             for t in top
         ],
         "success": {
