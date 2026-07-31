@@ -50,7 +50,7 @@ def _load_pending(token):
         with open(_pending_path(token)) as f:
             return json.load(f)
     except (OSError, ValueError):
-        return []
+        return {}
 
 
 def _clear_pending(token):
@@ -122,7 +122,7 @@ def upload_preview():
             new.append({"name": name, "email": email, "phone": phone})
 
     token = uuid.uuid4().hex
-    _save_pending(token, new)
+    _save_pending(token, {"new": new, "existing": len(existing), "invalid": len(invalid)})
     return render_template("preview.html", new=new, existing=existing,
                            invalid=invalid, token=token)
 
@@ -130,13 +130,19 @@ def upload_preview():
 @app.route("/confirm", methods=["POST"])
 def confirm():
     token = request.form.get("token", "")
-    rows = _load_pending(token)
+    data = _load_pending(token)
+    rows = data.get("new", [])
     con = open_db()
     for r in rows:
         db.add_contact(con, r["name"], r["email"], r.get("phone", ""))
     _clear_pending(token)
-    flash(f"Added {len(rows)} new contacts. Existing contacts were left untouched, "
-          "so unsubscribe and cooldown state is preserved.")
+
+    msg = f"Added {len(rows)} new contacts. {data.get('existing', 0)} were already " \
+          "in the system and were skipped, so their unsubscribe and cooldown state " \
+          "is preserved."
+    if data.get("invalid"):
+        msg += f" {data['invalid']} invalid rows were ignored."
+    flash(msg)
     return redirect(url_for("dashboard_view"))
 
 
