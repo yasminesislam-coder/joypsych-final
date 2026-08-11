@@ -2,7 +2,10 @@
 import os
 
 # --- storage ---
-DB_PATH = os.environ.get("OUTBOUND_DB", "demo.db")
+# Anchor the default database to the project root, so it opens no matter which
+# directory the app is launched from. Override with OUTBOUND_DB (absolute or relative).
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.environ.get("OUTBOUND_DB", os.path.join(_ROOT, "demo.db"))
 
 # --- the once-a-month rule ---
 REST_DAYS = 30          # after a send, rest this many days before the next
